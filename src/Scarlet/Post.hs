@@ -38,13 +38,11 @@ entryFromParsedEntry (Right (ParsedEntry mCtime mUri title content mByline langu
 entryFromParsedEntry (Left parseError) = return (Left parseError)
 
 directive    :: CharParser st (String, String)
-directive    = comment $ do
+directive    = do
+    string "<!--"
     keyword <- manyTill anyChar (string ": ")
-    value <- quotedString
+    value <- manyTill anyChar (string "-->")
     return (keyword, value)
-  where
-    comment = between (string "<!--") (string "-->")
-    quotedString = string "\"" >> manyTill anyChar (string "\"")
 
 entryParser  :: CharParser st ParsedEntry
 entryParser = do

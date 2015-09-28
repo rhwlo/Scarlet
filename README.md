@@ -1,6 +1,6 @@
 # Scarlet
 
-Scarlet is a lightweight blogging engine built on Yesod, based on the design of [Stirling][0].
+Scarlet is a lightweight blogging engine built on [Yesod][1], based on the design of [Stirling][0].
 More features (by which I mean any) will be forthcoming, and when they are, I’ll update this readme.
 
 ## scarlet-post ##
@@ -12,8 +12,8 @@ Instead, there’s an inconvenient update mechanism called `scarlet-post` which 
 like so:
 
 ```
-<!--Title: "a title"-->
-<!--Language: "en"-->
+<!--title: a title-->
+<!--lang: en-->
 Here’s some content in Markdown. Whee!
 ```
 
@@ -21,3 +21,4 @@ and then transforms it, entirely believably, into a database entry. It’s proba
 just use `sqlite3` to directly modify the file.
 
 [0]: https://github.com/celoyd/stirling
+[1]: http://www.yesodweb.com/
