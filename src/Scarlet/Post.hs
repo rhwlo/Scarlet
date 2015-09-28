@@ -16,21 +16,15 @@ import System.Environment (getArgs, getEnv)
 import Text.ParserCombinators.Parsec
 import Text.Printf
 
-data FieldName = Byline
-               | Ctime
-               | Language
-               | Title
-               | Uri
-             deriving (Eq, Ord, Read, Show)
+data ParsedEntry = ParsedEntry (Maybe String)     -- ctime:   optional (defaults to now)
+                               (Maybe String)     -- uri:     optional (defaults to title-derived)
+                               String             -- title
+                               String             -- content
+                               (Maybe String)     -- byline:  optional (defaults to $USER)
+                               String             -- language
 
-entryFromParams :: Maybe String     -- ctime, defaulting to now
-                -> Maybe String     -- uri, defaulting to derived from title
-                -> String           -- title
-                -> String           -- content
-                -> Maybe String     -- byline, defaulting to $USER
-                -> String           -- language
-                -> IO SE.Entry         -- the complete entry
-entryFromParams mCtime mUri title content mByline language = let
+entryFromParsedEntry :: Either ParseError ParsedEntry -> IO (Either ParseError SE.Entry)
+entryFromParsedEntry (Right (ParsedEntry mCtime mUri title content mByline language)) = let
     iCtime :: IO UTCTime
     iCtime = maybe getCurrentTime return (mCtime >>= parseTimeM True defaultTimeLocale "%Y-%m-%d %H:%M:%S %Z")
     uri :: String
@@ -40,47 +34,56 @@ entryFromParams mCtime mUri title content mByline language = let
   in
     iByline >>= \byline ->
       iCtime >>= \ctime ->
-        return $ SE.Entry ctime uri title content byline language
+        return $ Right $ SE.Entry ctime uri title content byline language
+entryFromParsedEntry (Left parseError) = return (Left parseError)
 
-directive    :: CharParser st (FieldName, String)
+directive    :: CharParser st (String, String)
 directive    = comment $ do
     keyword <- manyTill anyChar (string ": ")
     value <- quotedString
-    return (read keyword, value)
+    return (keyword, value)
   where
     comment = between (string "<!--") (string "-->")
     quotedString = string "\"" >> manyTill anyChar (string "\"")
 
-entryParser  :: CharParser st (IO SE.Entry)
+entryParser  :: CharParser st ParsedEntry
 entryParser = do
     directives <- DM.fromList <$> many directiveLine
     content <- many anyChar
-    return $ entryFromParams (DM.lookup Ctime directives)
-                             (DM.lookup Uri directives)
-                             (directives DM.! Title)
-                             content
-                             (DM.lookup Byline directives)
-                             (directives DM.! Language)
+    return $ ParsedEntry (DM.lookup "date" directives)
+                         (DM.lookup "uri"  directives)
+                         (directives DM.! "title")
+                         content
+                         (DM.lookup "by" directives)
+                         (directives DM.! "lang")
   where
     directiveLine = do
       d <- directive
       newline
       return d
+    defaultedCtime :: Maybe String -> IO UTCTime
+    defaultedCtime mCtimeString = maybe getCurrentTime return $
+      mCtimeString >>= parseTimeM True defaultTimeLocale "%Y-%m-%d %H:%M:%S %Z"
+    defaultedUri   :: DM.Map String String -> String
+    defaultedUri directives = let
+        title :: String
+        title = directives DM.! "title"
+        mUri  :: Maybe String
+        mUri  = DM.lookup "uri" directives
+        makeUriFromTitle :: String -> String
+        makeUriFromTitle = intercalate "-" . words
+      in fromMaybe (makeUriFromTitle title) mUri
+    defaultedByline :: Maybe String -> IO String
+    defaultedByline = maybe (getEnv "USER") return
 
 main :: IO ()
 main = runSqlite "scarlet.sqlite" $ do
   runMigration $ migrate SE.entityDefs $ entityDef (Nothing :: Maybe SE.Entry)
-  (filename:_) <- liftIO getArgs
-  eitherEntry <- liftIO (parseEntryFromFile filename)
+  eitherEntry <- liftIO $ do
+    (filename:_) <- getArgs
+    parseFromFile entryParser filename >>= entryFromParsedEntry
   case eitherEntry of
     Left errorString -> liftIO $ print errorString
     Right entry      -> do
       entryId <- insert entry
       liftIO $ printf "Added your entry \"%s\"\n" (SE.entryTitle entry)
-
-parseEntryFromFile :: String -> IO (Either String SE.Entry)
-parseEntryFromFile filename = do
-  parsedEntry <- parseFromFile entryParser filename
-  case parsedEntry of
-    Left errorString        -> return $ Left (show errorString)
-    Right entry             -> Right <$> entry
