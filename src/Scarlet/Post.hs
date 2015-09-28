@@ -5,12 +5,13 @@ module Main where
 
 import Control.Monad.Logger (runStderrLoggingT)
 import Control.Monad.IO.Class (liftIO)
+import Data.Char (toLower)
 import Data.List (intercalate)
 import qualified Data.Map as DM
-import Database.Persist.Sqlite
 import Data.Maybe (fromMaybe, maybe)
 import Data.Time.Clock
 import Data.Time.Format
+import Database.Persist.Sqlite
 import qualified Scarlet.Entry as SE
 import System.Environment (getArgs, getEnv)
 import Text.ParserCombinators.Parsec
@@ -28,7 +29,7 @@ entryFromParsedEntry (Right (ParsedEntry mCtime mUri title content mByline langu
     iCtime :: IO UTCTime
     iCtime = maybe getCurrentTime return (mCtime >>= parseTimeM True defaultTimeLocale "%Y-%m-%d %H:%M:%S %Z")
     uri :: String
-    uri = fromMaybe (intercalate "," (words title)) mUri
+    uri = fromMaybe (intercalate "-" (words (fmap toLower title))) mUri
     iByline :: IO String
     iByline = maybe (getEnv "USER") return mByline
   in

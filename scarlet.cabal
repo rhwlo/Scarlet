@@ -21,16 +21,16 @@ executable scarlet
                        QuasiQuotes,
                        TemplateHaskell,
                        TypeFamilies
-  build-depends:       base >=4.8 && <4.9,
+  build-depends:       base,
                        containers,
-                       Cabal >=1.22 && <1.23,
-                       parsec,
+                       Cabal,
+                       pandoc,
                        persistent,
                        persistent-sqlite,
                        persistent-template,
                        resourcet,
                        monad-logger,
-                       time >=1.5 && <1.6,
+                       time,
                        text,
                        transformers,
                        yesod
@@ -48,15 +48,15 @@ executable scarlet-post
                        QuasiQuotes,
                        TemplateHaskell,
                        TypeFamilies
-  build-depends:       base >=4.8 && <4.9,
+  build-depends:       base,
                        containers,
-                       Cabal >=1.22 && <1.23,
+                       Cabal,
                        monad-logger,
                        parsec,
                        persistent,
                        persistent-sqlite,
                        persistent-template,
-                       time >=1.5 && <1.6,
+                       time,
                        transformers
   hs-source-dirs:      src
   default-language:    Haskell2010
