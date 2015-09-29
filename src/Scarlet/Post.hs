@@ -4,7 +4,8 @@
 module Main where
 
 import Control.Monad.Logger (runStderrLoggingT)
-import Control.Monad.IO.Class (liftIO)
+import Control.Monad.IO.Class (MonadIO, liftIO)
+import Control.Monad.Trans (lift)
 import Data.Char (toLower)
 import Data.List (intercalate)
 import qualified Data.Map as DM
@@ -14,47 +15,35 @@ import Data.Time.Format
 import Database.Persist.Sqlite
 import qualified Scarlet.Entry as SE
 import System.Environment (getArgs, getEnv)
-import Text.ParserCombinators.Parsec
+import Text.Parsec
 import Text.Printf
 
-data ParsedEntry = ParsedEntry (Maybe String)     -- ctime:   optional (defaults to now)
-                               (Maybe String)     -- uri:     optional (defaults to title-derived)
-                               String             -- title
-                               String             -- content
-                               (Maybe String)     -- byline:  optional (defaults to $USER)
-                               String             -- language
+directive :: ParsecT String () IO (String, String)
+directive = do
+    string "<!--"                               -- the comment starts
+    key <- quotedOrNotUntil (string ": ")       -- "key": or key:
+    value <- quotedOrNotUntil (string "-->")    -- "value" or value
+    return (key, value)
+  where
+    quotedUntil s = do
+      openingQuote <- string "\"" <|> string "'"
+      middleStuff <- manyTill anyChar (string openingQuote)
+      s
+      return middleStuff
+    quotedOrNotUntil s = quotedUntil s <|> manyTill anyChar s
 
-entryFromParsedEntry :: Either ParseError ParsedEntry -> IO (Either ParseError SE.Entry)
-entryFromParsedEntry (Right (ParsedEntry mCtime mUri title content mByline language)) = let
-    iCtime :: IO UTCTime
-    iCtime = maybe getCurrentTime return (mCtime >>= parseTimeM True defaultTimeLocale "%Y-%m-%d %H:%M:%S %Z")
-    uri :: String
-    uri = fromMaybe (intercalate "-" (words (fmap toLower title))) mUri
-    iByline :: IO String
-    iByline = maybe (getEnv "USER") return mByline
-  in
-    iByline >>= \byline ->
-      iCtime >>= \ctime ->
-        return $ Right $ SE.Entry ctime uri title content byline language
-entryFromParsedEntry (Left parseError) = return (Left parseError)
-
-directive    :: CharParser st (String, String)
-directive    = do
-    string "<!--"
-    keyword <- manyTill anyChar (string ": ")
-    value <- manyTill anyChar (string "-->")
-    return (keyword, value)
-
-entryParser  :: CharParser st ParsedEntry
+entryParser :: ParsecT String () IO SE.Entry
 entryParser = do
     directives <- DM.fromList <$> many directiveLine
     content <- many anyChar
-    return $ ParsedEntry (DM.lookup "date" directives)
-                         (DM.lookup "uri"  directives)
-                         (directives DM.! "title")
-                         content
-                         (DM.lookup "by" directives)
-                         (directives DM.! "lang")
+    ctime <- liftIO $ defaultedCtime (DM.lookup "date" directives)
+    byline <- liftIO $ defaultedByline (DM.lookup "by" directives)
+    return $ SE.Entry ctime
+                      (defaultedUri directives)
+                      (directives DM.! "title")
+                      content
+                      byline
+                      (directives DM.! "lang")
   where
     directiveLine = do
       d <- directive
@@ -79,8 +68,8 @@ main :: IO ()
 main = runSqlite "scarlet.sqlite" $ do
   runMigration $ migrate SE.entityDefs $ entityDef (Nothing :: Maybe SE.Entry)
   eitherEntry <- liftIO $ do
-    (filename:_) <- getArgs
-    parseFromFile entryParser filename >>= entryFromParsedEntry
+    fileContents <- readFile =<< (head <$> getArgs)
+    runParserT entryParser () "" fileContents
   case eitherEntry of
     Left errorString -> liftIO $ print errorString
     Right entry      -> do
