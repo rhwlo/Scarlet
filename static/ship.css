@@ -1,0 +1,200 @@
+@charset "UTF-8";
+
+body {
+	font-size: 100%;
+	line-height: 1.5em;
+	width: 35em;
+	font-family: Gentium;
+	margin: 5em 0 5em 6em;
+	background-color: #c6ad67;
+}
+
+a, a:visited {
+	color: black;
+	text-decoration: none;
+	border-bottom: 1px solid #40181c;
+}
+
+a.isbn {
+	border-bottom: 1px dashed #40181c;
+	color: inherit;
+}
+
+a img {
+	border: 1px solid #40181c;
+}
+
+a.image {
+	border: none;
+}
+
+h1, h2, h3, h4, h5, h6 {
+	font-family: Georgia, serif;
+	font-weight: normal;
+	font-size: 1.5em;
+	line-height: 1em;
+	margin: 0 0 1em 0;
+	padding: 0;
+	color: #403518;
+}
+
+h2 {
+	font-family: inherit;
+	font-size: 1em;
+	font-weight: bold;
+}
+
+q:before { content: "\201C"; }
+q:after { content: "\201D"; }
+
+#main p {
+	margin-bottom: 1em; }
+
+#main p + p {
+	margin-top: 0px;
+}
+
+#main p + img {
+	margin-top: 1.5em;
+}
+
+#main .poetry p {
+	margin-bottom: 1em;
+	text-indent: 0px;
+}
+
+#main ol, #main ul, #main dl {
+	margin-bottom: 0px; }
+
+/* .poetry > p, p.poetry {
+	text-indent: 1.5em; } */
+
+form > p {
+	text-indent: 0em;
+	margin-bottom: 1li; }
+
+p + h2 { margin-top: 2em; }
+
+q.loose { font-style: italic; }
+q.loose:before { content: ''; }
+q.loose:after { content: ''; }
+
+sup, sub { line-height: 0px; }
+
+hr {
+	border: none;
+}
+
+ul {
+	list-style-type: circle;
+	padding-left: 1.5em;
+}
+
+blockquote {
+	margin: 1em 0em 1em 1.5em; /* ?! */
+	background: #c6ad67 url('http://fearchar.net/double-quote') 0 0 no-repeat;
+	padding: 0 0 0 2.2em;
+}
+
+.frame {
+	margin-bottom: 1.5em;
+}
+
+#title {
+	position: fixed;
+	top: 0px;
+	right: 0px;
+	color: #40181c;
+	background-color: #c6ad67;
+	padding: 0.5em;
+	text-align: right;
+}
+
+#title a {
+	color: #40181c;
+	border: none;
+	border-bottom: solid 1px #40181c;
+}
+
+#title h1 {
+	margin: 0px;
+	color: #40181c;
+	padding: 0px;
+	display: inline;
+}
+
+#title h1 a {
+	border: none;
+}
+
+#title span.options a {
+	font-size: 8pt;
+	margin-left: 0.5em;
+	margin-right: 0.5em;
+}
+
+#title span.options a:before {
+	content: "[";
+}
+
+#title span.options a:after {
+	content: "]";
+}
+
+.anchor {
+	float: left;
+	width: 1.5em;
+	margin-left: -1.5em;
+	color: #40181c;
+	font-family: Webdings, Arial;
+}
+
+.anchor a {
+	color: #40181c;
+}
+
+div.frame:hover .anchor {
+	color: #40181c;
+}
+
+.anchor > a { border: none; }
+
+.anchor a:hover {
+	color: #403518;
+}
+
+p.editlink {
+	margin-top: 0em; }
+
+.editlink > a{
+	color: #c6ad67;
+}
+
+.editlink > a {
+	border: none;
+}
+
+.editlink > a:hover { color: #40181c; }
+
+.frame > img {
+	border: 1px solid black;
+	margin: 0em;
+}
+
+blockquote {
+	clear: right;
+}
+
+p.attribution {
+	float: right;
+	margin-top: 0em;
+	margin-bottom: 2em;
+}
+
+p.attribution:before {
+	content: "—";
+}
+
+#mod_quote {
+	font-style: italic;
+}
