@@ -24,6 +24,7 @@ executable scarlet
   build-depends:       base,
                        containers,
                        Cabal,
+                       exceptions,
                        pandoc,
                        persistent,
                        persistent-sqlite,

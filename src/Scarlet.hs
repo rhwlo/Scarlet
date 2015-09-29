@@ -1,5 +1,6 @@
 {-# LANGUAGE EmptyDataDecls             #-}
 {-# LANGUAGE FlexibleContexts           #-}
+{-# LANGUAGE FlexibleInstances          #-}
 {-# LANGUAGE GADTs                      #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE MultiParamTypeClasses      #-}
@@ -11,10 +12,10 @@
 
 module Main where
 
+import Control.Monad.Catch (MonadThrow)
 import Control.Monad.Logger (runStderrLoggingT)
 import Control.Monad.Trans.Resource (runResourceT)
 import Database.Persist.Sqlite
-import Data.List (foldl')
 import Data.Text (Text)
 import Text.Pandoc (def, readMarkdown, writeHtmlString)
 import Text.Pandoc.Error (handleError)
@@ -52,7 +53,10 @@ blogTitle = "Scarlet"
 blogAuthor :: String
 blogAuthor = "joshu"
 
-formatPost entry = let
+formatEntry :: (MonadIO m, MonadBaseControl IO m, MonadThrow m)
+            => Entity Entry
+            -> WidgetT Scarlet m ()
+formatEntry (Entity _ entry) = let
   htmlContent = handleError (writeHtmlString def <$> readMarkdown def (entryContent entry))
     in [whamlet|
 <div class=post>
@@ -60,6 +64,11 @@ formatPost entry = let
   <a href=@{SingleR (entryUri entry)}>
    #{entryTitle entry}
  #{preEscapedToMarkup htmlContent}|]
+
+formatEntries :: (MonadIO m, MonadBaseControl IO m, MonadThrow m)
+              => [Entity Entry]
+              -> WidgetT Scarlet m ()
+formatEntries = mconcat . fmap formatEntry
 
 template title body = [whamlet|
 <html>
@@ -89,19 +98,23 @@ getSingleR :: String -> ScarletHandler Html
 getSingleR uri = do
   results <- runDB $ selectFirst [EntryUri ==. uri] []
   case results of
-    Just (Entity _ entry) -> let
-      in defaultLayout $ template (blogTitle ++ " - " ++ entryTitle entry) (formatPost entry)
+    Just (Entity e entry) -> let
+      in defaultLayout $ template (blogTitle ++ " - " ++ entryTitle entry) (formatEntry (Entity e entry))
     Nothing -> defaultLayout $ template blogTitle [whamlet|<p>No such post found, sorry!|]
 
 getAllR :: ScarletHandler Html
 getAllR = do
-    entries <- runDB $ selectList [EntryUri !=. ""] []
+    entries <- runDB $ selectList [] [Desc EntryCtime]
+    defaultLayout $ template blogTitle (formatEntries entries)
+
+getPageR :: Int -> ScarletHandler Html
+getPageR offset = do
+    entries <- runDB $ selectList [] [Desc EntryCtime,
+                                      LimitTo paginationNumber,
+                                      OffsetBy (paginationNumber * offset)]
     defaultLayout $ template blogTitle (formatEntries entries)
   where
-    formatEntries = foldl' (\hamletted (Entity _ entry) ->
-      [whamlet|
-^{formatPost entry}
-^{hamletted}|]) [whamlet||]
+    paginationNumber = 10
 
 main :: IO ()
 main = runStderrLoggingT $ withSqlitePool "scarlet.sqlite"
