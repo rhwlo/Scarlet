@@ -5,7 +5,6 @@ module Main where
 
 import Control.Monad.Logger (runStderrLoggingT)
 import Control.Monad.IO.Class (MonadIO, liftIO)
-import Control.Monad.Trans (lift)
 import Data.Char (toLower)
 import Data.List (intercalate)
 import qualified Data.Map as DM
@@ -59,7 +58,7 @@ entryParser = do
         mUri  :: Maybe String
         mUri  = DM.lookup "uri" directives
         makeUriFromTitle :: String -> String
-        makeUriFromTitle = intercalate "-" . words
+        makeUriFromTitle = intercalate "-" . words . map toLower
       in fromMaybe (makeUriFromTitle title) mUri
     defaultedByline :: Maybe String -> IO String
     defaultedByline = maybe (getEnv "USER") return
