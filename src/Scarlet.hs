@@ -30,6 +30,15 @@ import Scarlet.Entry
 
 data Scarlet = Scarlet { getConnPool :: ConnectionPool, getStatic :: Static }
 
+paginationNumber :: Int
+paginationNumber = 2
+
+blogTitle :: String
+blogTitle = "Scarlet"
+
+blogAuthor :: String
+blogAuthor = "joshu"
+
 instance Yesod Scarlet
 instance YesodPersist Scarlet where
   type YesodPersistBackend Scarlet = SqlBackend
@@ -50,13 +59,6 @@ mkYesod "Scarlet" [parseRoutes|
 /static StaticR Static getStatic
 !/#String             SingleR     GET
 |]
-
-
-blogTitle :: String
-blogTitle = "Scarlet"
-
-blogAuthor :: String
-blogAuthor = "joshu"
 
 formatEntry :: (MonadIO m, MonadBaseControl IO m, MonadThrow m)
             => Entity Entry
@@ -85,11 +87,6 @@ formatStub (Entity _ entry) = [whamlet|
 <div class=stub id=t#{formatTime defaultTimeLocale "%s" (entryCtime entry)}>
 |]
 
-formatEntries :: (MonadIO m, MonadBaseControl IO m, MonadThrow m)
-              => [Entity Entry]
-              -> WidgetT Scarlet m ()
-formatEntries = mconcat . fmap formatEntry
-
 formatWithDogears :: (MonadIO m, MonadBaseControl IO m, MonadThrow m)
                    => (Entity Entry -> WidgetT Scarlet m ())
                    -> Int
@@ -110,11 +107,6 @@ formatWithDogears formatter pN offset entries = let
 
 formatEntriesWithDogears = formatWithDogears formatEntry
 formatStubsWithDogears = formatWithDogears formatStub
-
-formatStubs :: (MonadIO m, MonadBaseControl IO m, MonadThrow m)
-            => [Entity Entry]
-            -> WidgetT Scarlet m ()
-formatStubs = mconcat . fmap formatStub
 
 template title body = [whamlet|
 <html>
@@ -167,9 +159,6 @@ getStartFromR offset = do
                                       LimitTo paginationNumber,
                                       OffsetBy (paginationNumber * offset)]
     defaultLayout $ template blogTitle (formatEntriesWithDogears paginationNumber offset entries)
-
-paginationNumber :: Int
-paginationNumber = 2
 
 getAllR :: ScarletHandler Html
 getAllR = getStartFromR 0
