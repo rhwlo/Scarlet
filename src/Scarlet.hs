@@ -93,9 +93,10 @@ formatEntries = mconcat . fmap formatEntry
 formatWithDogears :: (MonadIO m, MonadBaseControl IO m, MonadThrow m)
                    => (Entity Entry -> WidgetT Scarlet m ())
                    -> Int
+                   -> Int
                    -> [Entity Entry]
                    -> WidgetT Scarlet m ()
-formatWithDogears formatter pN entries = let
+formatWithDogears formatter pN offset entries = let
     section :: Int -> [a] -> [[a]]
     section n [] = []
     section n xs = take n xs:section n (drop n xs)
@@ -105,7 +106,7 @@ formatWithDogears formatter pN entries = let
     alternate _ [] = []
     alternate (x:xs) (y:ys) = x:y:alternate xs ys
   in
-    mconcat $ id =<< alternate (section pN formattedEntries) [[formatDogear n] | n <- [1..]]
+    mconcat $ id =<< alternate (section pN formattedEntries) [[formatDogear n] | n <- [offset..]]
 
 formatEntriesWithDogears = formatWithDogears formatEntry
 formatStubsWithDogears = formatWithDogears formatStub
@@ -165,7 +166,7 @@ getStartFromR offset = do
     entries <- runDB $ selectList [] [Desc EntryCtime,
                                       LimitTo paginationNumber,
                                       OffsetBy (paginationNumber * offset)]
-    defaultLayout $ template blogTitle (formatEntriesWithDogears paginationNumber entries)
+    defaultLayout $ template blogTitle (formatEntriesWithDogears paginationNumber offset entries)
 
 paginationNumber :: Int
 paginationNumber = 2
@@ -176,7 +177,7 @@ getAllR = getStartFromR 0
 getNextAfterR :: Int -> ScarletHandler Html
 getNextAfterR offset = do
   stubs <- runDB $ selectList [] [Desc EntryCtime, LimitTo 10, OffsetBy offset]
-  withoutLayout (formatStubsWithDogears paginationNumber stubs)
+  withoutLayout (formatStubsWithDogears (offset `div` paginationNumber) paginationNumber stubs)
 
 main :: IO ()
 main = runStderrLoggingT $ withSqlitePool "scarlet.sqlite"
