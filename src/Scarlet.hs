@@ -16,7 +16,10 @@ import Control.Monad.Catch (MonadThrow)
 import Control.Monad.Logger (runStderrLoggingT)
 import Control.Monad.Trans.Resource (runResourceT)
 import Database.Persist.Sqlite
+import Data.Maybe (catMaybes)
 import Data.Text (Text)
+import Data.Time.Clock
+import Data.Time.Format
 import Text.Pandoc (def, readMarkdown, writeHtmlString)
 import Text.Pandoc.Error (handleError)
 import Yesod
@@ -39,11 +42,13 @@ type ScarletHandler = HandlerT Scarlet IO
 staticFiles "static"
 
 mkYesod "Scarlet" [parseRoutes|
-/                  AllR        GET
-/just/#Integer     JustR       GET
-/about             AboutR      GET
+/                     AllR        GET
+/from/#Int            StartFromR  GET
+/just/#Int            JustR       GET
+/next-after/#Int      NextAfterR  GET
+/about                AboutR      GET
 /static StaticR Static getStatic
-!/#String          SingleR     GET
+!/#String             SingleR     GET
 |]
 
 
@@ -59,21 +64,62 @@ formatEntry :: (MonadIO m, MonadBaseControl IO m, MonadThrow m)
 formatEntry (Entity _ entry) = let
   htmlContent = handleError (writeHtmlString def <$> readMarkdown def (entryContent entry))
     in [whamlet|
-<div class=post>
+<div class=post id=t#{formatTime defaultTimeLocale "%s" (entryCtime entry)}>
  <h1 title=#{show $ entryCtime entry}>
   <a href=@{SingleR (entryUri entry)}>
    #{entryTitle entry}
  #{preEscapedToMarkup htmlContent}|]
+
+formatDogear :: (MonadIO m, MonadBaseControl IO m, MonadThrow m)
+             => Int
+             -> WidgetT Scarlet m ()
+formatDogear pageNumber = [whamlet|
+<div class=anchor id=page#{show pageNumber}>
+  <a href=@{StartFromR pageNumber}>⚓
+|]
+
+formatStub :: (MonadIO m, MonadBaseControl IO m, MonadThrow m)
+           => Entity Entry
+           -> WidgetT Scarlet m ()
+formatStub (Entity _ entry) = [whamlet|
+<div class=stub id=t#{formatTime defaultTimeLocale "%s" (entryCtime entry)}>
+|]
 
 formatEntries :: (MonadIO m, MonadBaseControl IO m, MonadThrow m)
               => [Entity Entry]
               -> WidgetT Scarlet m ()
 formatEntries = mconcat . fmap formatEntry
 
+formatWithDogears :: (MonadIO m, MonadBaseControl IO m, MonadThrow m)
+                   => (Entity Entry -> WidgetT Scarlet m ())
+                   -> Int
+                   -> [Entity Entry]
+                   -> WidgetT Scarlet m ()
+formatWithDogears formatter pN entries = let
+    section :: Int -> [a] -> [[a]]
+    section n [] = []
+    section n xs = take n xs:section n (drop n xs)
+    formattedEntries = formatter <$> entries
+    alternate :: [a] -> [a] -> [a]
+    alternate [] _ = []
+    alternate _ [] = []
+    alternate (x:xs) (y:ys) = x:y:alternate xs ys
+  in
+    mconcat $ id =<< alternate (section pN formattedEntries) [[formatDogear n] | n <- [1..]]
+
+formatEntriesWithDogears = formatWithDogears formatEntry
+formatStubsWithDogears = formatWithDogears formatStub
+
+formatStubs :: (MonadIO m, MonadBaseControl IO m, MonadThrow m)
+            => [Entity Entry]
+            -> WidgetT Scarlet m ()
+formatStubs = mconcat . fmap formatStub
+
 template title body = [whamlet|
 <html>
  <head>
   <link rel=stylesheet href=@{StaticR ship_css}>
+  <script src=@{StaticR scarlet_js}>
   <title>#{title}
  <body>
   <div id=title>
@@ -88,8 +134,20 @@ template title body = [whamlet|
    ^{body}
 |]
 
-getJustR :: Integer -> ScarletHandler Html
-getJustR aNumber = defaultLayout [whamlet|<h1>This is #{aNumber}|]
+withoutLayout :: WidgetT Scarlet IO () -> ScarletHandler Html
+withoutLayout = (>>= withUrlRenderer . pageBody) . widgetToPageContent
+
+getJustR :: Int -> ScarletHandler Html
+getJustR timestamp = let
+    maybeTimeStamps :: [UTCTime]
+    maybeTimeStamps = catMaybes $ parseTimeM True defaultTimeLocale "%s" . show <$> [timestamp, timestamp + 1]
+  in case maybeTimeStamps of
+    [someMinTime, someMaxTime] -> do
+      results <- runDB $ selectFirst [EntryCtime >=. someMinTime, EntryCtime <=. someMaxTime] []
+      case results of
+        Just entry -> withoutLayout (formatEntry entry)
+        Nothing -> withUrlRenderer $ [hamlet||]
+    _ -> withUrlRenderer $ [hamlet||]
 
 getAboutR :: ScarletHandler Html
 getAboutR = defaultLayout [whamlet|About me? Why?|]
@@ -98,23 +156,27 @@ getSingleR :: String -> ScarletHandler Html
 getSingleR uri = do
   results <- runDB $ selectFirst [EntryUri ==. uri] []
   case results of
-    Just (Entity e entry) -> let
-      in defaultLayout $ template (blogTitle ++ " - " ++ entryTitle entry) (formatEntry (Entity e entry))
+    Just (Entity e entry) ->
+      defaultLayout $ template (blogTitle ++ " - " ++ entryTitle entry) (formatEntry (Entity e entry))
     Nothing -> defaultLayout $ template blogTitle [whamlet|<p>No such post found, sorry!|]
 
-getAllR :: ScarletHandler Html
-getAllR = do
-    entries <- runDB $ selectList [] [Desc EntryCtime]
-    defaultLayout $ template blogTitle (formatEntries entries)
-
-getPageR :: Int -> ScarletHandler Html
-getPageR offset = do
+getStartFromR :: Int -> ScarletHandler Html
+getStartFromR offset = do
     entries <- runDB $ selectList [] [Desc EntryCtime,
                                       LimitTo paginationNumber,
                                       OffsetBy (paginationNumber * offset)]
-    defaultLayout $ template blogTitle (formatEntries entries)
-  where
-    paginationNumber = 10
+    defaultLayout $ template blogTitle (formatEntriesWithDogears paginationNumber entries)
+
+paginationNumber :: Int
+paginationNumber = 2
+
+getAllR :: ScarletHandler Html
+getAllR = getStartFromR 0
+
+getNextAfterR :: Int -> ScarletHandler Html
+getNextAfterR offset = do
+  stubs <- runDB $ selectList [] [Desc EntryCtime, LimitTo 10, OffsetBy offset]
+  withoutLayout (formatStubsWithDogears paginationNumber stubs)
 
 main :: IO ()
 main = runStderrLoggingT $ withSqlitePool "scarlet.sqlite"

@@ -159,7 +159,7 @@ div.frame:hover .anchor {
 
 .anchor > a { border: none; }
 
-.anchor a:hover {
+a:hover, .anchor a:hover {
 	color: #403518;
 }
 
