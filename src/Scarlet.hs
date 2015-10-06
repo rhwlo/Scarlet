@@ -12,6 +12,7 @@
 
 module Main where
 
+import Control.Monad (join)
 import Control.Monad.Catch (MonadThrow)
 import Control.Monad.Logger (runStderrLoggingT)
 import Control.Monad.Trans.Resource (runResourceT)
@@ -103,7 +104,7 @@ formatWithDogears formatter pN offset entries = let
     alternate _ [] = []
     alternate (x:xs) (y:ys) = x:y:alternate xs ys
   in
-    mconcat $ id =<< alternate (section pN formattedEntries) [[formatDogear n] | n <- [offset..]]
+    mconcat $ join $ alternate (section pN formattedEntries) [[formatDogear n] | n <- [(offset + 1)..]]
 
 formatEntriesWithDogears = formatWithDogears formatEntry
 formatStubsWithDogears = formatWithDogears formatStub

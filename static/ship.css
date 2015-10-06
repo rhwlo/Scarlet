@@ -4,24 +4,25 @@ body {
 	font-size: 100%;
 	line-height: 1.5em;
 	width: 35em;
-	font-family: Gentium;
+	color: lightcyan;
+	font-family: "Triplicate T4p", monospace;
 	margin: 5em 0 5em 6em;
-	background-color: #c6ad67;
+	background-color: steelblue;
 }
 
 a, a:visited {
-	color: black;
+	color: honeydew;
 	text-decoration: none;
-	border-bottom: 1px solid #40181c;
+	border-bottom: 1px solid honeydew;
 }
 
 a.isbn {
-	border-bottom: 1px dashed #40181c;
+	border-bottom: 1px dashed honeydew;
 	color: inherit;
 }
 
 a img {
-	border: 1px solid #40181c;
+	border: 1px solid honeydew;
 }
 
 a.image {
@@ -29,17 +30,16 @@ a.image {
 }
 
 h1, h2, h3, h4, h5, h6 {
-	font-family: Georgia, serif;
+	font-family: inherit;
 	font-weight: normal;
 	font-size: 1.5em;
 	line-height: 1em;
 	margin: 0 0 1em 0;
 	padding: 0;
-	color: #403518;
+	color: aliceblue;
 }
 
 h2 {
-	font-family: inherit;
 	font-size: 1em;
 	font-weight: bold;
 }
@@ -92,7 +92,8 @@ ul {
 
 blockquote {
 	margin: 1em 0em 1em 1.5em; /* ?! */
-	background: #c6ad67 url('http://fearchar.net/double-quote') 0 0 no-repeat;
+	background: slategray url('http://fearchar.net/double-quote') 0 0 no-repeat;
+	color: whitesmoke;
 	padding: 0 0 0 2.2em;
 }
 
@@ -104,21 +105,21 @@ blockquote {
 	position: fixed;
 	top: 0px;
 	right: 0px;
-	color: #40181c;
-	background-color: #c6ad67;
-	padding: 0.5em;
+	color: whitesmoke;
+	background-color: slategray;
+	padding: 1em;
 	text-align: right;
 }
 
 #title a {
-	color: #40181c;
+	color: ghostwhite;
 	border: none;
-	border-bottom: solid 1px #40181c;
+	border-bottom: solid 1px ghostwhite;
 }
 
 #title h1 {
 	margin: 0px;
-	color: #40181c;
+	color: whitesmoke;
 	padding: 0px;
 	display: inline;
 }
@@ -145,36 +146,30 @@ blockquote {
 	float: left;
 	width: 1.5em;
 	margin-left: -1.5em;
-	color: #40181c;
+	color: mintcream;
 	font-family: Webdings, Arial;
 }
 
 .anchor a {
-	color: #40181c;
+	color: mintcream;
 }
 
 div.frame:hover .anchor {
-	color: #40181c;
+	color: mintcream;
 }
 
 .anchor > a { border: none; }
 
 a:hover, .anchor a:hover {
-	color: #403518;
+	color: mintcream;
+}
+
+div.post {
+	margin-bottom: 3em;
 }
 
 p.editlink {
 	margin-top: 0em; }
-
-.editlink > a{
-	color: #c6ad67;
-}
-
-.editlink > a {
-	border: none;
-}
-
-.editlink > a:hover { color: #40181c; }
 
 .frame > img {
 	border: 1px solid black;

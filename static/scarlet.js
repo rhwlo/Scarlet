@@ -45,7 +45,7 @@ const util = {
 
 function fadeInTheDivs() {
   fadingDivs = util.flatMap(fadingDivs, function (elem) {
-    if (elem === undefined) { return []; }
+    if (elem === undefined || elem.style === undefined) { return []; }
     const opacity = parseFloat(elem.style.opacity);
     if (opacity < 1.0) {
       elem.style.opacity = opacity + 0.01;
@@ -63,15 +63,21 @@ function refreshScroll() {
       return;
     }
     if (stubs.length != 0) {
-      util.httpGet("/just/" + stubs[0].id.replace("t", ""), function (entry) {
-        stubs[0].className = "post";
-        stubs[0].innerHTML = entry;
-        stubs[0].style.opacity = 0.01;
-        stubs[0] = stubs[0].firstChild;
-        fadingDivs.push(stubs[0]);
+      const lastStubId = stubs[0].id;
+      util.httpGet("/just/" + lastStubId.replace("t", ""), function (entry) {
+        var lastStub = document.getElementById(lastStubId);
+        lastStub.insertAdjacentHTML('beforebegin', entry);
+        lastStub.previousSibling.opacity = 0.01;
+        fadingDivs.push(lastStub.previousSibling);
+        lastStub.parentNode.removeChild(lastStub);
       });
     } else {
-      util.httpGet("/next-after/" + posts.length, function (entries) {
+      var offset = posts.length;
+      const matches = window.location.toString().match(/from\/(\d+)/)
+      if (matches) {
+        offset += parseInt(matches[1]) * 2;
+      }
+      util.httpGet("/next-after/" + offset, function (entries) {
         if (entries == "") {
           const thatsAllFolks = document.createElement("div");
           thatsAllFolks.id = "thatsallfolks";
@@ -81,7 +87,9 @@ function refreshScroll() {
           newStubDiv = document.createElement("div");
           newStubDiv.innerHTML = entries;
           for (var i=0; i<newStubDiv.children.length; i++) { // this bit makes me sad.
-            document.getElementById("main").appendChild(newStubDiv.children[i]);
+            if (!document.getElementById(newStubDiv.children[i].id)) {
+              document.getElementById("main").appendChild(newStubDiv.children[i]);
+            }
           }
         }
       });
