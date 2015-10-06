@@ -96,15 +96,12 @@ formatWithDogears :: (MonadIO m, MonadBaseControl IO m, MonadThrow m)
                    -> WidgetT Scarlet m ()
 formatWithDogears formatter pN offset entries = let
     section :: Int -> [a] -> [[a]]
-    section n [] = []
+    section _ [] = []
     section n xs = take n xs:section n (drop n xs)
     formattedEntries = formatter <$> entries
-    alternate :: [a] -> [a] -> [a]
-    alternate [] _ = []
-    alternate _ [] = []
-    alternate (x:xs) (y:ys) = x:y:alternate xs ys
+    dogEars = [ formatDogear n | n <- [offset..] ]
   in
-    mconcat $ join $ alternate (section pN formattedEntries) [[formatDogear n] | n <- [(offset + 1)..]]
+    mconcat $ join $ zipWith (:) dogEars (section pN formattedEntries)
 
 formatEntriesWithDogears = formatWithDogears formatEntry
 formatStubsWithDogears = formatWithDogears formatStub
