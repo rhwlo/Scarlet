@@ -17,7 +17,9 @@ import Control.Monad.Catch (MonadThrow)
 import Control.Monad.Logger (runStderrLoggingT)
 import Control.Monad.Trans.Resource (runResourceT)
 import Database.Persist.Sqlite
+import Data.Foldable (foldl')
 import Data.Maybe (catMaybes)
+import Data.Monoid (Monoid(..), (<>))
 import Data.Text (Text)
 import Data.Time.Clock
 import Data.Time.Format
@@ -31,8 +33,8 @@ import Scarlet.Entry
 
 data Scarlet = Scarlet { getConnPool :: ConnectionPool, getStatic :: Static }
 
-paginationNumber :: Int
-paginationNumber = 2
+pageLength :: Int
+pageLength = 2
 
 blogTitle :: String
 blogTitle = "Scarlet"
@@ -56,7 +58,6 @@ mkYesod "Scarlet" [parseRoutes|
 /from/#Int            StartFromR  GET
 /just/#Int            JustR       GET
 /next-after/#Int      NextAfterR  GET
-/about                AboutR      GET
 /static StaticR Static getStatic
 !/#String             SingleR     GET
 |]
@@ -88,23 +89,22 @@ formatStub (Entity _ entry) = [whamlet|
 <div class=stub id=t#{formatTime defaultTimeLocale "%s" (entryCtime entry)}>
 |]
 
-formatWithDogears :: (MonadIO m, MonadBaseControl IO m, MonadThrow m)
-                   => (Entity Entry -> WidgetT Scarlet m ())
-                   -> Int
-                   -> Int
-                   -> [Entity Entry]
-                   -> WidgetT Scarlet m ()
-formatWithDogears formatter pN offset entries = let
-    section :: Int -> [a] -> [[a]]
-    section _ [] = []
-    section n xs = take n xs:section n (drop n xs)
-    formattedEntries = formatter <$> entries
-    dogEars = [ formatDogear n | n <- [offset..] ]
-  in
-    mconcat $ join $ zipWith (:) dogEars (section pN formattedEntries)
+intercalateWith :: Monoid m => Int -> (Int -> m) -> [m] -> m
+intercalateWith divLen makeSeparator xs = foldl' accumXs mempty [0..(length xs `div` divLen - 1)]
+  where
+    accumXs x divNum = let
+        remainingXs = drop (divLen * divNum) xs
+      in
+        x <> makeSeparator divNum <> mconcat (take divLen remainingXs)
 
-formatEntriesWithDogears = formatWithDogears formatEntry
-formatStubsWithDogears = formatWithDogears formatStub
+formatWithDogears :: (MonadIO m, MonadBaseControl IO m, MonadThrow m)
+                   => Int
+                   -> [WidgetT Scarlet m ()]
+                   -> WidgetT Scarlet m ()
+formatWithDogears pageOffset formattedEntries = let
+    dogearFormatter = formatDogear . (+ pageOffset)
+  in
+    intercalateWith pageLength dogearFormatter formattedEntries
 
 template title body = [whamlet|
 <html>
@@ -119,7 +119,7 @@ template title body = [whamlet|
    <br>
    by #{blogAuthor}<br>
    (
-    <a href=@{AboutR}>learn more
+    <a href=@{SingleR "about"}>learn more
    )
   <div id=main>
    ^{body}
@@ -140,9 +140,6 @@ getJustR timestamp = let
         Nothing -> withUrlRenderer $ [hamlet||]
     _ -> withUrlRenderer $ [hamlet||]
 
-getAboutR :: ScarletHandler Html
-getAboutR = defaultLayout [whamlet|About me? Why?|]
-
 getSingleR :: String -> ScarletHandler Html
 getSingleR uri = do
   results <- runDB $ selectFirst [EntryUri ==. uri] []
@@ -151,20 +148,26 @@ getSingleR uri = do
       defaultLayout $ template (blogTitle ++ " - " ++ entryTitle entry) (formatEntry (Entity e entry))
     Nothing -> defaultLayout $ template blogTitle [whamlet|<p>No such post found, sorry!|]
 
-getStartFromR :: Int -> ScarletHandler Html
-getStartFromR offset = do
+getContentAfter :: (MonadIO m, MonadBaseControl IO m, MonadThrow m)
+                => (WidgetT Scarlet m () -> ScarletHandler Html)
+                -> (Entity Entry -> WidgetT Scarlet m ())
+                -> Int
+                -> ScarletHandler Html
+getContentAfter display formatter pageOffset = do
     entries <- runDB $ selectList [] [Desc EntryCtime,
-                                      LimitTo paginationNumber,
-                                      OffsetBy (paginationNumber * offset)]
-    defaultLayout $ template blogTitle (formatEntriesWithDogears paginationNumber offset entries)
+                                      LimitTo pageLength,
+                                      OffsetBy (pageOffset * pageLength)]
+    display $ formatWithDogears pageOffset (formatter <$> entries)
+
+
+getStartFromR :: Int -> ScarletHandler Html
+getStartFromR = getContentAfter (defaultLayout . template blogTitle) formatEntry
 
 getAllR :: ScarletHandler Html
 getAllR = getStartFromR 0
 
 getNextAfterR :: Int -> ScarletHandler Html
-getNextAfterR offset = do
-  stubs <- runDB $ selectList [] [Desc EntryCtime, LimitTo 10, OffsetBy offset]
-  withoutLayout (formatStubsWithDogears (offset `div` paginationNumber) paginationNumber stubs)
+getNextAfterR = getContentAfter withoutLayout formatStub
 
 main :: IO ()
 main = runStderrLoggingT $ withSqlitePool "scarlet.sqlite"
