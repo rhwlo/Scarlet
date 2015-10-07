@@ -1,4 +1,9 @@
-window.onscroll = refreshScroll;
+const PAGE_LENGTH = 2;
+
+if (window.location.toString().match(/https?:\/\/[^/]+(?:(?:from)?\/)?/)) {
+  window.onscroll = refreshScroll;
+}
+
 window.setInterval(fadeInTheDivs, 30);
 
 var fadingDivs = [];
@@ -48,7 +53,7 @@ function fadeInTheDivs() {
     if (elem === undefined || elem.style === undefined) { return []; }
     const opacity = parseFloat(elem.style.opacity);
     if (opacity < 1.0) {
-      elem.style.opacity = opacity + 0.01;
+//      elem.style.opacity = opacity + 0.01;
       return [elem];
     }
   });
@@ -67,15 +72,20 @@ function refreshScroll() {
       util.httpGet("/just/" + lastStubId.replace("t", ""), function (entry) {
         var lastStub = document.getElementById(lastStubId);
         lastStub.insertAdjacentHTML('beforebegin', entry);
-        lastStub.previousSibling.opacity = 0.01;
-        fadingDivs.push(lastStub.previousSibling);
+        var newPostId = lastStub.previousSibling.id;
+        var newStub = document.getElementById(newStubId);
+        newStub.opacity = 0.01;
+        if (fadingDivs.indexOf(newStub) == -1) {
+          console.log("fading in " + newStubId);
+          fadingDivs.push(newStub);
+        };
         lastStub.parentNode.removeChild(lastStub);
       });
     } else {
-      var offset = posts.length;
+      var offset = Math.floor(posts.length / PAGE_LENGTH);
       const matches = window.location.toString().match(/from\/(\d+)/)
       if (matches) {
-        offset += parseInt(matches[1]) * 2;
+        offset += parseInt(matches[1]);
       }
       util.httpGet("/next-after/" + offset, function (entries) {
         if (entries == "") {
@@ -86,9 +96,10 @@ function refreshScroll() {
         } else {
           newStubDiv = document.createElement("div");
           newStubDiv.innerHTML = entries;
-          for (var i=0; i<newStubDiv.children.length; i++) { // this bit makes me sad.
-            if (!document.getElementById(newStubDiv.children[i].id)) {
-              document.getElementById("main").appendChild(newStubDiv.children[i]);
+          while (newStubDiv.children.length) {
+            if (!document.getElementById(newStubDiv.firstChild)) {
+              console.log(newStubDiv.firstChild.className);
+              document.getElementById("main").appendChild(newStubDiv.firstChild);
             }
           }
         }
