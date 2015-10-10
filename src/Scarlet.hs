@@ -110,6 +110,8 @@ template title body = [whamlet|
 <html>
  <head>
   <link rel=stylesheet href=@{StaticR ship_css}>
+  <script src=@{StaticR jquery_2_1_4_min_js}>
+  <script src=@{StaticR _Bacon_js}>
   <script src=@{StaticR scarlet_js}>
   <title>#{title}
  <body>

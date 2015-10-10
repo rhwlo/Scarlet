@@ -1,109 +1,69 @@
 const PAGE_LENGTH = 2;
+const PAGE_OFFSET = (function () {
+  const pageMatches = window.location.toString().match(/from\/(\d+)/);
+  if (!pageMatches) {
+    return 0;
+  } else {
+    return parseInt(pageMatches[1]);
+  }})();
 
-if (window.location.toString().match(/https?:\/\/[^/]+(?:(?:from)?\/)?/)) {
-  window.onscroll = refreshScroll;
-}
-
-window.setInterval(fadeInTheDivs, 30);
-
-var fadingDivs = [];
-
-const util = {
-  flatMap: function flatMap (airQuotesMonad, f) {
-    var result = [];
-    airQuotesMonad.forEach(function (el) {
-    result = result.concat(f(el));
-    });
-    return result;
-  },
-  filterThenMap: function filterThenMap (arr, p, c) {
-    return util.flatMap(arr, function (elem) {
-      if (p(elem)) { return [c(elem)]; } else { return []; }
-    });
-  },
-  httpGet: function httpGet(url, callback) {
-    util.httpRequest("get", url, callback);
-  },
-  httpRequest: function httpRequest(type, url, callback) {
-    const newRequest = new XMLHttpRequest();
-    newRequest.onreadystatechange = function() {
-      if (this.readyState == 4 && this.status == 200) {
-        callback(this.responseText);
+function scrolledPast(element) {
+  return Bacon.fromBinder(function (sink) {
+    $(window).scroll(function (e) {
+      if ($(window).scrollTop() + $(window).height() > $(element).position().top) {
+        sink($(element));
       }
-    }
-    newRequest.open(type.toUpperCase(), url);
-    newRequest.send();
-  },
-  mapThenFilter: function mapThenFilter (arr, p, c) {
-    return util.flatMap(arr, function(elem) {
-      if (p(c(elem))) { return [c(elem)]; } else { return []; }
-    })
-  },
-  nullableGet: function nullableGet (nullable, key) {
-    if (nullable === null || nullable === undefined) {
-      return nullable;
-    } else {
-      return nullable[key];
-    }
-  }
-}
-
-function fadeInTheDivs() {
-  fadingDivs = util.flatMap(fadingDivs, function (elem) {
-    if (elem === undefined || elem.style === undefined) { return []; }
-    const opacity = parseFloat(elem.style.opacity);
-    if (opacity < 1.0) {
-//      elem.style.opacity = opacity + 0.01;
-      return [elem];
-    }
+    });
   });
 }
 
-function refreshScroll() {
-  const posts = document.getElementsByClassName("post");
-  const lastPost = posts[posts.length - 1];
-  if (window.innerHeight > lastPost.getBoundingClientRect().top) {
-    const stubs = document.getElementsByClassName("stub");
-    if (document.getElementById("thatsallfolks")) {
-      return;
-    }
-    if (stubs.length != 0) {
-      const lastStubId = stubs[0].id;
-      util.httpGet("/just/" + lastStubId.replace("t", ""), function (entry) {
-        var lastStub = document.getElementById(lastStubId);
-        lastStub.insertAdjacentHTML('beforebegin', entry);
-        var newPostId = lastStub.previousSibling.id;
-        var newStub = document.getElementById(newStubId);
-        newStub.opacity = 0.01;
-        if (fadingDivs.indexOf(newStub) == -1) {
-          console.log("fading in " + newStubId);
-          fadingDivs.push(newStub);
-        };
-        lastStub.parentNode.removeChild(lastStub);
-      });
+function toResultStream(request) {
+  return Bacon.fromPromise($.ajax(request));
+}
+
+var lastStubScrolled = scrolledPast("div.post:last")
+  .filter(function (el) {
+    return (el.next()[0] === undefined || el.nextAll(".stub")[0] === undefined); });
+
+var getMoreStubs = lastStubScrolled
+  .filter(function (el) { return (el.nextAll("#thatsallfolks")[0] === undefined); })
+  .map(function () { return Math.floor($("div.post").length / PAGE_LENGTH); })
+  .filter(function (pageNum) { return ($("page" + pageNum)[0] === undefined)})
+  .map(function () {
+    return "/next-after/" + (PAGE_OFFSET + Math.floor($("div.post").length / PAGE_LENGTH)); })
+  .flatMap(toResultStream)
+  .zip(lastStubScrolled);
+
+getMoreStubs.onError(function (err) {
+  console.log(err);
+});
+
+getMoreStubs
+  .onValues(function (newStubs, lastPost) {
+    if (newStubs == "" && $("#thatsallfolks")[0] === undefined) {
+      lastPost.after("<div id=\"thatsallfolks\" hidden=\"\"></div>");
     } else {
-      var offset = Math.floor(posts.length / PAGE_LENGTH);
-      const matches = window.location.toString().match(/from\/(\d+)/)
-      if (matches) {
-        offset += parseInt(matches[1]);
-      }
-      util.httpGet("/next-after/" + offset, function (entries) {
-        if (entries == "") {
-          const thatsAllFolks = document.createElement("div");
-          thatsAllFolks.id = "thatsallfolks";
-          thatsAllFolks.hidden = true;
-          document.getElementById("main").appendChild(thatsAllFolks);
-        } else {
-          newStubDiv = document.createElement("div");
-          newStubDiv.innerHTML = entries;
-          while (newStubDiv.children.length) {
-            if (!document.getElementById(newStubDiv.firstChild)) {
-              console.log(newStubDiv.firstChild.className);
-              document.getElementById("main").appendChild(newStubDiv.firstChild);
-            }
-          }
+      $.each($.parseHTML(newStubs), function (i, el) {
+        if ($("#" + el.id).length == 0) {
+          var lastPostOrStub = $("#main > div:last")
+          lastPostOrStub.after(el);
         }
       });
     }
-  }
-}
+  });
+
+var nextStubToPopulate = scrolledPast("div.post:last")
+  .filter(function (el) { return el.nextAll(".stub")[0] != undefined })
+  .map(function (el) { return $(el.nextAll(".stub")[0]); });
+
+nextStubToPopulate
+  .map(function (el) { return el[0].id.replace(/^t/, "/just/"); })
+  .flatMap(toResultStream)
+  .zip(nextStubToPopulate)
+  .onValues(function (newElementAsText, oldStub) {
+    var newElement = $.parseHTML(newElementAsText);
+    $(newElement)
+     .hide()
+     .replaceAll(oldStub)
+     .fadeIn(1000);
+  });
