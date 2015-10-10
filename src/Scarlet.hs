@@ -23,6 +23,7 @@ import Data.Monoid (Monoid(..), (<>))
 import Data.Text (Text)
 import Data.Time.Clock
 import Data.Time.Format
+import System.Environment (getArgs)
 import Text.Pandoc (def, readMarkdown, writeHtmlString)
 import Text.Pandoc.Error (handleError)
 import Yesod
@@ -174,7 +175,8 @@ getNextAfterR = getContentAfter withoutLayout formatStub
 main :: IO ()
 main = runStderrLoggingT $ withSqlitePool "scarlet.sqlite"
     openConnectionCount $ \pool -> liftIO $ do
+      portNum:_ <- getArgs
       static@(Static settings) <- static "static"
-      warp 3000 $ Scarlet pool static
+      warp (read portNum :: Int) $ Scarlet pool static
   where
     openConnectionCount = 10
