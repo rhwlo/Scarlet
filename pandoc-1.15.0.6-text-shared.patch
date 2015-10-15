@@ -1,0 +1,19 @@
+diff -ru a/pandoc-1.15.0.6/src/Text/Pandoc/Shared.hs b/pandoc-1.15.0.6/src/Text/Pandoc/Shared.hs
+--- a/pandoc-1.15.0.6/src/Text/Pandoc/Shared.hs	2015-10-12 19:47:27.940583324 -0700
++++ b/pandoc-1.15.0.6/src/Text/Pandoc/Shared.hs	2015-10-12 19:47:04.996677873 -0700
+@@ -135,6 +135,7 @@
+ import qualified Data.Text as T (toUpper, pack, unpack)
+ import Data.ByteString.Lazy (toChunks, fromChunks)
+ import qualified Data.ByteString.Lazy as BL
++import Codec.Archive.Zip
+ 
+ #ifdef EMBED_DATA_FILES
+ import Text.Pandoc.Data (dataFiles)
+@@ -150,7 +151,6 @@
+ import System.Environment (getEnv)
+ import Network.HTTP.Types.Header ( hContentType)
+ import Network (withSocketsDo)
+-import Codec.Archive.Zip
+ #else
+ import Network.URI (parseURI)
+ import Network.HTTP (findHeader, rspBody,
