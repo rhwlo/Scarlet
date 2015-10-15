@@ -19,11 +19,12 @@ import Data.Time.Clock (UTCTime)
 share [mkPersist sqlSettings, mkSave "entityDefs"]
   [persistLowerCase|
   Entry
-      ctime     UTCTime
-      uri       String
-      title     String
-      content   String
-      byline    String
-      language  String
+      ctime       UTCTime
+      uri         String
+      title       String
+      content     String
+      byline      String
+      language    String
+      directives  String
     deriving Show
   |]
