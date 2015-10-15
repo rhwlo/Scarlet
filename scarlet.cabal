@@ -11,8 +11,8 @@ cabal-version:        >=1.22
 
 
 library
-  exposed-modules:    Scarlet.Post.Internal,
-                      Scarlet.Entry
+--  exposed-modules:    Scarlet.Post.Internal,
+  exposed-modules:    Scarlet.Entry
   hs-source-dirs:     src
   other-extensions:   FlexibleContexts,
                       OverloadedStrings
@@ -31,19 +31,19 @@ library
                       transformers >= 0.4.2.0
   default-language:   Haskell2010
 
-test-suite scarlet-test
-  test-module:        PostTest
-  type:               detailed-0.9
-  build-depends:      scarlet,
-                      base >= 4.8.1.0,
-                      cabal-test-hunit >= 0.2,
-                      Cabal >= 1.22.4.0,
-                      HUnit >= 1.3.0.0,
-                      HTTP >= 4000.2.20,
-                      network-uri >= 2.6.0.3,
-                      pandoc >= 1.15.0.6,
-                      parsec >= 3.1.9
-  hs-source-dirs:     test
+--test-suite scarlet-test
+--  test-module:        PostTest
+--  type:               detailed-0.9
+--  build-depends:      scarlet,
+--                      base >= 4.8.1.0,
+--                      cabal-test-hunit >= 0.2,
+--                      Cabal >= 1.22.4.0,
+--                      HUnit >= 1.3.0.0,
+--                      HTTP >= 4000.2.20,
+--                      network-uri >= 2.6.0.3,
+--                      pandoc >= 1.15.0.6,
+--                      parsec >= 3.1.9
+--  hs-source-dirs:     test
 
 
 executable scarlet
