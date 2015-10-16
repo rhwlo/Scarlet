@@ -16,7 +16,7 @@ library
   hs-source-dirs:     src
   other-extensions:   FlexibleContexts,
                       OverloadedStrings
-  build-depends:      base >= 4.8.1.0,
+  build-depends:      base >= 4.8.0.0,
                       containers >= 0.5.6.2,
                       Cabal >= 1.22.4.0,
                       monad-logger >= 0.3.13.2,
@@ -35,7 +35,7 @@ test-suite scarlet-test
   test-module:        PostTest
   type:               detailed-0.9
   build-depends:      scarlet,
-                      base >= 4.8.1.0,
+                      base >= 4.8.0.0,
                       cabal-test-hunit >= 0.2,
                       Cabal >= 1.22.4.0,
                       HUnit >= 1.3.0.0,
@@ -44,7 +44,6 @@ test-suite scarlet-test
                       pandoc >= 1.15.0.6,
                       parsec >= 3.1.9
   hs-source-dirs:     test
-
 
 executable scarlet
   main-is:            Scarlet.hs
@@ -57,7 +56,7 @@ executable scarlet
                       QuasiQuotes,
                       TemplateHaskell,
                       TypeFamilies
-  build-depends:      base >= 4.8.1.0,
+  build-depends:      base >= 4.8.0.0,
                       containers >= 0.5.6.2,
                       Cabal >= 1.22.4.0,
                       exceptions >= 0.8.0.2,
@@ -86,7 +85,7 @@ executable scarlet-post
                       QuasiQuotes,
                       TemplateHaskell,
                       TypeFamilies
-  build-depends:      base >= 4.8.1.0,
+  build-depends:      base >= 4.8.0.0,
                       containers >= 0.5.6.2,
                       Cabal >= 1.22.4.0,
                       monad-logger >= 0.3.13.2,
