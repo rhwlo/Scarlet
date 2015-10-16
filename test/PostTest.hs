@@ -1,7 +1,8 @@
 module PostTest where
 
 -- external
-import Data.List (isSuffixOf)
+import Data.List (intercalate, isSuffixOf)
+import qualified Data.Map as DM
 import Network.HTTP (HStream, Request(..), Response(..))
 import qualified Network.Stream
 import Network.URI (uriPath)
@@ -45,24 +46,27 @@ test5File =  "test/t5.md"
 
 test5FromMarkdownFile :: IO C.Test
 test5FromMarkdownFile = do
-    -- t5e :: Either ParseError SE.Entry
     eT5e <- SP.parseEntry =<< readFile test5File
     case eT5e of
       Right t5e -> do
         absentUris <- SP.scanForAbsentRelativeUrisWithHTTP dummySimpleHTTP t5e
         return $ H.test "properly parses an example Markdown"
                   $ TestList [
-                      TestCase (absentUris      @?= expectedAbsentUris),
-                      TestCase (SE.entryUri t5e @?= expectedEntryUri)
+                      TestCase (SE.entryDirectives t5e  @=? expectedEntryDirectives),
+                      TestCase (SE.entryUri t5e         @?= expectedEntryUri),
+                      TestCase (absentUris              @?= expectedAbsentUris)
                     ]
       Left e    -> return $ H.test "Parse failed" (TestCase (assertFailure (show e)))
   where
     expectedAbsentUris = ["mjölkfria-bullar.jpg"]
+    expectedEntryDirectives = "fromList [(\"static_host\",\"cerulean.questionable.rocks\")]"
     expectedEntryUri = "cinnamon-buns-for-cinnamon-bun-day"
     expectedAbsoluteAbsentUris = attachPrefix <$> expectedAbsentUris
       where
-        attachPrefix = (("http://cerulean.questionable.rocks/"  ++ expectedEntryUri ++ "/") ++)
-    dummySimpleHTTP requestUri = dummyHTTPWrap $ any (`isSuffixOf` requestUri) expectedAbsoluteAbsentUris
+        attachPrefix :: String -> String
+        attachPrefix = intercalate "/" . (++) ["http://cerulean.questionable.rocks",
+                                               expectedEntryUri] . (:[])
+    dummySimpleHTTP requestUri = dummyHTTPWrap $ notElem requestUri expectedAbsoluteAbsentUris
 
 pureHTests :: [(String, Test)]
 pureHTests = [

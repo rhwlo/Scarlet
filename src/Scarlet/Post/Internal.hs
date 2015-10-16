@@ -9,7 +9,7 @@ import Control.Monad (filterM)
 import Control.Monad.Logger (runStderrLoggingT)
 import Control.Monad.IO.Class (MonadIO, liftIO)
 import Data.Char (isAlphaNum, toLower)
-import Data.List (intercalate)
+import Data.List (foldl', intercalate)
 import qualified Data.Map as DM
 import Data.Maybe (fromMaybe, maybe)
 import Data.Time.Clock
@@ -26,13 +26,25 @@ import Text.Pandoc.Error (handleError)
 import Text.Printf
 
 class Pandocoid p where
-  toPandoc :: p -> Pandoc
+  toPandoc    :: p -> Pandoc
+
+class Entryoid e where
+  directives  :: e -> DM.Map String String
+  entryUri    :: e -> String
 
 instance Pandocoid Pandoc where
   toPandoc = id
 
+instance Entryoid Pandoc where
+  directives _ = []
+  entryUri _ = ""
+
 instance Pandocoid SE.Entry where
   toPandoc = handleError . readMarkdown def . SE.entryContent
+
+instance Entryoid SE.Entry where
+  directives = read . SE.entryDirectives
+  entryUri = SE.entryUri
 
 directive :: ParsecT String () IO (String, String)
 directive = do
@@ -62,29 +74,42 @@ scanForAssets (toPandoc -> Pandoc _ blocks) = scanBlockForAssets =<< blocks
     getAssets (Link _ (uri, _))           = [uri]
     getAssets _                           = []
 
-scanForRelativeURIs :: Pandocoid p => p   -- takes a Pandoc document
-                    -> [String]           -- returns a list of relative URIs
+scanForRelativeURIs :: (Entryoid p, Pandocoid p) => p   -- takes a Pandoc document
+                    -> [String]                         -- returns a list of relative URIs
 scanForRelativeURIs = filter (not . isAbsoluteURI) . scanForAssets
 
-scanForAbsentRelativeUris :: Pandocoid p => p  -- takes a Pandoc document
-                          -> IO [String]       -- returns a (side-effecty) list of relative URIs
+scanForAbsentRelativeUris :: (Entryoid p, Pandocoid p) => p  -- takes a Pandoc document
+                          -> IO [String]                     -- returns a (side-effecty) list of relative URIs
 scanForAbsentRelativeUris = scanForAbsentRelativeUrisWithHTTP (simpleHTTP . headRequest)
 
-scanForAbsentRelativeUrisWithHTTP :: Pandocoid pandocoid
+scanForAbsentRelativeUrisWithHTTP :: (Entryoid entripandocoid, Pandocoid entripandocoid)
                                   => (String -> IO (Network.Stream.Result (Response String)))
                                   -- an HTTP handler
-                                  -> pandocoid        -- the document to process
+                                  -> entripandocoid   -- the document to process
                                   -> IO [String]      -- the list of absent relative URIs
 scanForAbsentRelativeUrisWithHTTP httpHandler doc = let
     relativeUris :: [String]
     relativeUris = scanForRelativeURIs doc
     isAbsent :: String -> IO Bool
     isAbsent uri = do
-      resp <- httpHandler uri
-      return $ case resp of
-        Right (Response { rspCode = (2, 0, _) }) -> False
-        Right (Response { rspCode = (3, 0, _) }) -> False
-        _                                        -> True
+        resp <- httpHandler uri
+        return $ case resp of
+          Right (Response { rspCode = (2, 0, _) }) -> False
+          Right (Response { rspCode = (3, 0, _) }) -> False
+          _                                        -> True
+      where
+        qualifiedUri :: String
+        qualifiedUri = let
+            directivesMap :: DM.Map String String
+            directivesMap = directives doc
+            maybeStaticHost :: Maybe String
+            maybeStaticHost = DM.lookup "static_host" directivesMap
+            maybePrefix :: Maybe String
+            maybePrefix = do
+              staticHost <- maybeStaticHost
+              return $ intercalate "/" ["http:/", staticHost, entryUri doc]
+          in
+            fromMaybe "" maybePrefix ++ uri
   in
     filterM isAbsent relativeUris
 
@@ -100,6 +125,7 @@ entryParser = do
                       content
                       byline
                       (directives DM.! "lang")
+                      (show $ otherDirectivesFrom directives)
   where
     directiveLine = do
       d <- directive
@@ -119,6 +145,10 @@ entryParser = do
       in fromMaybe (makeUriFromTitle title) mUri
     defaultedByline :: Maybe String -> IO String
     defaultedByline = maybe (getEnv "USER") return
+    consumedDirectives :: [String]
+    consumedDirectives = ["by", "date", "lang", "title", "uri"]
+    otherDirectivesFrom :: DM.Map String String -> DM.Map String String
+    otherDirectivesFrom = flip (foldl' (flip DM.delete)) consumedDirectives
 
 parseEntry :: String -> IO (Either ParseError SE.Entry)
 parseEntry = runParserT entryParser () ""
