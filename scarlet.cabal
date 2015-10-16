@@ -44,6 +44,7 @@ test-suite scarlet-test
                       pandoc >= 1.15.0.6,
                       parsec >= 3.1.9
   hs-source-dirs:     test
+  default-language:   Haskell2010
 
 executable scarlet
   main-is:            Scarlet.hs
