@@ -25,24 +25,18 @@ import Text.Pandoc
 import Text.Pandoc.Error (handleError)
 import Text.Printf
 
-class Pandocoid p where
-  toPandoc    :: p -> Pandoc
-
 class Entryoid e where
+  toPandoc    :: e -> Pandoc
   directives  :: e -> DM.Map String String
   entryUri    :: e -> String
 
-instance Pandocoid Pandoc where
-  toPandoc = id
-
 instance Entryoid Pandoc where
+  toPandoc = id
   directives _ = []
   entryUri _ = ""
 
-instance Pandocoid SE.Entry where
-  toPandoc = handleError . readMarkdown def . SE.entryContent
-
 instance Entryoid SE.Entry where
+  toPandoc = handleError . readMarkdown def . SE.entryContent
   directives = read . SE.entryDirectives
   entryUri = SE.entryUri
 
@@ -60,7 +54,7 @@ directive = do
       return middleStuff
     quotedOrNotUntil s = quotedUntil s <|> manyTill anyChar s
 
-scanForAssets :: Pandocoid p => p -- takes a Pandoc document
+scanForAssets :: Entryoid e => e -- takes a Pandoc document
               -> [String]         -- returns a list of asset URIs as strings
 scanForAssets (toPandoc -> Pandoc _ blocks) = scanBlockForAssets =<< blocks
   where
@@ -74,42 +68,34 @@ scanForAssets (toPandoc -> Pandoc _ blocks) = scanBlockForAssets =<< blocks
     getAssets (Link _ (uri, _))           = [uri]
     getAssets _                           = []
 
-scanForRelativeURIs :: (Entryoid p, Pandocoid p) => p   -- takes a Pandoc document
+scanForRelativeURIs :: Entryoid e => e   -- takes a Pandoc document
                     -> [String]                         -- returns a list of relative URIs
 scanForRelativeURIs = filter (not . isAbsoluteURI) . scanForAssets
 
-scanForAbsentRelativeUris :: (Entryoid p, Pandocoid p) => p  -- takes a Pandoc document
+scanForAbsentRelativeUris :: Entryoid e => e  -- takes a Pandoc document
                           -> IO [String]                     -- returns a (side-effecty) list of relative URIs
 scanForAbsentRelativeUris = scanForAbsentRelativeUrisWithHTTP (simpleHTTP . headRequest)
 
-scanForAbsentRelativeUrisWithHTTP :: (Entryoid entripandocoid, Pandocoid entripandocoid)
+scanForAbsentRelativeUrisWithHTTP :: Entryoid entryoid
                                   => (String -> IO (Network.Stream.Result (Response String)))
                                   -- an HTTP handler
-                                  -> entripandocoid   -- the document to process
+                                  -> entryoid         -- the document to process
                                   -> IO [String]      -- the list of absent relative URIs
 scanForAbsentRelativeUrisWithHTTP httpHandler doc = let
     relativeUris :: [String]
     relativeUris = scanForRelativeURIs doc
     isAbsent :: String -> IO Bool
     isAbsent uri = do
-        resp <- httpHandler uri
+        resp <- httpHandler qualifiedUri
         return $ case resp of
           Right (Response { rspCode = (2, 0, _) }) -> False
           Right (Response { rspCode = (3, 0, _) }) -> False
           _                                        -> True
       where
         qualifiedUri :: String
-        qualifiedUri = let
-            directivesMap :: DM.Map String String
-            directivesMap = directives doc
-            maybeStaticHost :: Maybe String
-            maybeStaticHost = DM.lookup "static_host" directivesMap
-            maybePrefix :: Maybe String
-            maybePrefix = do
-              staticHost <- maybeStaticHost
-              return $ intercalate "/" ["http:/", staticHost, entryUri doc]
-          in
-            fromMaybe "" maybePrefix ++ uri
+        qualifiedUri = fromMaybe uri $ do
+          staticHost <- DM.lookup "static_host" $ directives doc
+          return $ printf "http://%s/%s/%s" staticHost (entryUri doc) uri
   in
     filterM isAbsent relativeUris
 

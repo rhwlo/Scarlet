@@ -66,7 +66,10 @@ test5FromMarkdownFile = do
         attachPrefix :: String -> String
         attachPrefix = intercalate "/" . (++) ["http://cerulean.questionable.rocks",
                                                expectedEntryUri] . (:[])
-    dummySimpleHTTP requestUri = dummyHTTPWrap $ notElem requestUri expectedAbsoluteAbsentUris
+--    dummySimpleHTTP requestUri = dummyHTTPWrap $ notElem requestUri expectedAbsoluteAbsentUris
+    dummySimpleHTTP :: String -> IO (Network.Stream.Result (Response String))
+    dummySimpleHTTP requestUri = dummyHTTPWrap (notElem requestUri expectedAbsoluteAbsentUris)
+
 
 pureHTests :: [(String, Test)]
 pureHTests = [
