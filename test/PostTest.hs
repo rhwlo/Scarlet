@@ -1,6 +1,7 @@
 module PostTest where
 
 -- external
+import Data.Either (rights)
 import Data.List (intercalate, isSuffixOf)
 import qualified Data.Map as DM
 import Network.HTTP (HStream, Request(..), Response(..))
@@ -20,6 +21,9 @@ import Test.HUnit
 import qualified Distribution.TestSuite as C
 import qualified Distribution.TestSuite.HUnit as H
 
+type HTTPHandler = (String -> HTTPResult)
+type HTTPResult = IO (Network.Stream.Result (Response String))
+
 tests :: IO [C.Test]
 tests = (++)
          <$> return (uncurry H.test <$> pureHTests)
@@ -32,7 +36,7 @@ effectfulTests = [test4ForAbsentRelativeUris,
 test4ForAbsentRelativeUris :: IO C.Test
 test4ForAbsentRelativeUris = let
     scanForAbsentRelativeUris :: Pandoc -> IO [String]
-    scanForAbsentRelativeUris = SP.scanForAbsentRelativeUrisWithHTTP t4DummySimpleHTTP
+    scanForAbsentRelativeUris = fmap rights . SP.scanForAbsentRelativeUrisWithHTTP t4DummySimpleHTTP
   in do
       absentRelativeUris <- scanForAbsentRelativeUris t4md
       return $ H.test "finds absent relative URIs"
@@ -49,16 +53,19 @@ test5FromMarkdownFile = do
     eT5e <- SP.parseEntry =<< readFile test5File
     case eT5e of
       Right t5e -> do
-        absentUris <- SP.scanForAbsentRelativeUrisWithHTTP dummySimpleHTTP t5e
+        absentUris <- rights <$> SP.scanForAbsentRelativeUrisWithHTTP dummySimpleHTTP t5e
+        puts <- rights <$> SP.handleAbsentUris dummySimpleHTTP dummySimplePUT t5e
         return $ H.test "properly parses an example Markdown"
                   $ TestList [
                       TestCase (SE.entryDirectives t5e  @=? expectedEntryDirectives),
                       TestCase (SE.entryUri t5e         @?= expectedEntryUri),
-                      TestCase (absentUris              @?= expectedAbsentUris)
+                      TestCase (absentUris              @?= expectedAbsentUris),
+                      TestCase (puts                    @?= expectedPuts)
                     ]
       Left e    -> return $ H.test "Parse failed" (TestCase (assertFailure (show e)))
   where
     expectedAbsentUris = ["mjölkfria-bullar.jpg"]
+    expectedPuts = zip expectedAbsentUris expectedAbsoluteAbsentUris
     expectedEntryDirectives = "fromList [(\"static_host\",\"cerulean.questionable.rocks\")]"
     expectedEntryUri = "cinnamon-buns-for-cinnamon-bun-day"
     expectedAbsoluteAbsentUris = attachPrefix <$> expectedAbsentUris
@@ -66,9 +73,10 @@ test5FromMarkdownFile = do
         attachPrefix :: String -> String
         attachPrefix = intercalate "/" . (++) ["http://cerulean.questionable.rocks",
                                                expectedEntryUri] . (:[])
---    dummySimpleHTTP requestUri = dummyHTTPWrap $ notElem requestUri expectedAbsoluteAbsentUris
-    dummySimpleHTTP :: String -> IO (Network.Stream.Result (Response String))
-    dummySimpleHTTP requestUri = dummyHTTPWrap (notElem requestUri expectedAbsoluteAbsentUris)
+    dummySimpleHTTP :: HTTPHandler
+    dummySimpleHTTP = dummyHTTPWrap . (`notElem` expectedAbsoluteAbsentUris)
+    dummySimplePUT :: String -> String -> IO (SP.EntryResult (String, String))
+    dummySimplePUT uri body = return (Right (uri, body))
 
 
 pureHTests :: [(String, Test)]

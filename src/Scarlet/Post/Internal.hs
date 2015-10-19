@@ -5,19 +5,20 @@
 module Scarlet.Post.Internal
 where
 
-import Control.Monad (filterM)
+import Control.Arrow ((&&&))
+import Control.Monad (filterM, foldM, forM, join, liftM)
 import Control.Monad.Logger (runStderrLoggingT)
 import Control.Monad.IO.Class (MonadIO, liftIO)
 import Data.Char (isAlphaNum, toLower)
 import Data.List (foldl', intercalate)
 import qualified Data.Map as DM
-import Data.Maybe (fromMaybe, maybe)
+import Data.Maybe (catMaybes, fromMaybe, maybe)
 import Data.Time.Clock
 import Data.Time.Format
 import Database.Persist.Sqlite
 import Network.HTTP (HStream, Request(..), Response(..), headRequest, simpleHTTP)
 import Network.URI (isAbsoluteURI)
-import qualified Network.Stream
+import qualified Network.Stream as NS
 import qualified Scarlet.Entry as SE
 import System.Environment (getArgs, getEnv)
 import Text.Parsec
@@ -25,10 +26,22 @@ import Text.Pandoc
 import Text.Pandoc.Error (handleError)
 import Text.Printf
 
+(<$$>) :: Functor f => f a -> (a -> b) -> f b     -- <$$> because it matches <**>
+a <$$> f = f <$> a
+infixl 4 <$$>
+
 class Entryoid e where
   toPandoc    :: e -> Pandoc
   directives  :: e -> DM.Map String String
   entryUri    :: e -> String
+
+data EntryError = SqliteError String
+                | EntryParseError   Text.Parsec.ParseError
+                | AssetNetworkError NS.ConnError
+                | AssetError        String
+                deriving (Show, Eq)
+
+type EntryResult a = Either EntryError a
 
 instance Entryoid Pandoc where
   toPandoc = id
@@ -54,8 +67,8 @@ directive = do
       return middleStuff
     quotedOrNotUntil s = quotedUntil s <|> manyTill anyChar s
 
-scanForAssets :: Entryoid e => e -- takes a Pandoc document
-              -> [String]         -- returns a list of asset URIs as strings
+scanForAssets :: Entryoid e => e -- takes an entryoid
+              -> [String]        -- returns a list of asset URIs as strings
 scanForAssets (toPandoc -> Pandoc _ blocks) = scanBlockForAssets =<< blocks
   where
     scanBlockForAssets :: Block -> [String]
@@ -68,36 +81,52 @@ scanForAssets (toPandoc -> Pandoc _ blocks) = scanBlockForAssets =<< blocks
     getAssets (Link _ (uri, _))           = [uri]
     getAssets _                           = []
 
-scanForRelativeURIs :: Entryoid e => e   -- takes a Pandoc document
-                    -> [String]                         -- returns a list of relative URIs
+scanForRelativeURIs :: Entryoid e => e   -- takes an entryoid
+                    -> [String]          -- returns a list of relative URIs
 scanForRelativeURIs = filter (not . isAbsoluteURI) . scanForAssets
 
-scanForAbsentRelativeUris :: Entryoid e => e  -- takes a Pandoc document
-                          -> IO [String]                     -- returns a (side-effecty) list of relative URIs
+scanForAbsentRelativeUris :: Entryoid e => e         -- takes an entryoid
+                          -> IO [EntryResult String] -- returns a (side-effecty) list of relative URIs
 scanForAbsentRelativeUris = scanForAbsentRelativeUrisWithHTTP (simpleHTTP . headRequest)
 
 scanForAbsentRelativeUrisWithHTTP :: Entryoid entryoid
-                                  => (String -> IO (Network.Stream.Result (Response String)))
-                                  -- an HTTP handler
-                                  -> entryoid         -- the document to process
-                                  -> IO [String]      -- the list of absent relative URIs
+                                  => (String -> IO (NS.Result (Response String))) -- an HTTP handler
+                                  -> entryoid                       -- the document to process
+                                  -> IO [EntryResult String]        -- the list of absent relative URIs
 scanForAbsentRelativeUrisWithHTTP httpHandler doc = let
     relativeUris :: [String]
     relativeUris = scanForRelativeURIs doc
-    isAbsent :: String -> IO Bool
-    isAbsent uri = do
+    findAbsent :: String -> IO (Maybe (EntryResult String))
+    findAbsent uri = do
         resp <- httpHandler qualifiedUri
         return $ case resp of
-          Right (Response { rspCode = (2, 0, _) }) -> False
-          Right (Response { rspCode = (3, 0, _) }) -> False
-          _                                        -> True
+          Right (Response { rspCode = (2, 0, _) }) -> Nothing
+          Right (Response { rspCode = (3, 0, _) }) -> Nothing
+          Right (Response { rspCode = (4, 0, _) }) -> Just (Right uri)
+          Right (Response { })                     -> Nothing
+          Left  connError                          -> Just (Left (AssetNetworkError connError))
       where
         qualifiedUri :: String
-        qualifiedUri = fromMaybe uri $ do
-          staticHost <- DM.lookup "static_host" $ directives doc
-          return $ printf "http://%s/%s/%s" staticHost (entryUri doc) uri
+        qualifiedUri = getQualifiedUri doc uri
   in
-    filterM isAbsent relativeUris
+    catMaybes <$> mapM findAbsent relativeUris
+
+getQualifiedUri :: Entryoid e => e -> String -> String
+getQualifiedUri doc uri = fromMaybe uri $ do
+  staticHost <- DM.lookup "static_host" $ directives doc
+  return $ printf "http://%s/%s/%s" staticHost (entryUri doc) uri
+
+handleAbsentUris :: Entryoid entryoid
+                 => (String -> IO (NS.Result (Response String)))
+                 -> (String -> String -> IO (EntryResult a))
+                 -> entryoid
+                 -> IO [EntryResult a]
+handleAbsentUris httpGetHandler httpPutHandler doc = let
+    httpPutHandlerWithError e = join <$> mapM (uncurry httpPutHandler) e
+    makeHttpPutHandlerArg = fmap $ id &&& getQualifiedUri doc
+  in do
+    absentUris <- scanForAbsentRelativeUrisWithHTTP httpGetHandler doc
+    mapM httpPutHandlerWithError (makeHttpPutHandlerArg <$> absentUris)
 
 entryParser :: ParsecT String () IO SE.Entry
 entryParser = do
@@ -136,5 +165,9 @@ entryParser = do
     otherDirectivesFrom :: DM.Map String String -> DM.Map String String
     otherDirectivesFrom = flip (foldl' (flip DM.delete)) consumedDirectives
 
-parseEntry :: String -> IO (Either ParseError SE.Entry)
-parseEntry = runParserT entryParser () ""
+parseEntry :: String -> IO (EntryResult SE.Entry)
+parseEntry = let
+    handleParsecError :: Either ParseError SE.Entry -> EntryResult SE.Entry
+    handleParsecError (Left parsecError)  = Left (EntryParseError parsecError)
+    handleParsecError (Right entry)       = Right entry
+  in fmap handleParsecError . runParserT entryParser () ""
