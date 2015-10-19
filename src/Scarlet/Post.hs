@@ -3,72 +3,54 @@
 
 module Main where
 
-import Control.Monad.Logger (runStderrLoggingT)
+import Scarlet.Post.Internal ((<$$>), EntryError(..), EntryResult(..))
+import qualified Scarlet.Post.Internal as SPI
+import Control.Monad (forM_)
 import Control.Monad.IO.Class (MonadIO, liftIO)
-import Data.Char (toLower)
-import Data.List (intercalate)
-import qualified Data.Map as DM
-import Data.Maybe (fromMaybe, maybe)
-import Data.Time.Clock
-import Data.Time.Format
+import qualified Data.Text as T
+import qualified Data.ByteString.Internal as BSI
 import Database.Persist.Sqlite
+import Network.HTTP (RequestMethod(PUT), headRequest, mkRequest, setRequestBody, simpleHTTP)
+import Network.Mime (defaultMimeLookup)
+import Network.URI (parseURI)
 import qualified Scarlet.Entry as SE
 import System.Environment (getArgs, getEnv)
-import Text.Parsec
+import System.IO (Handle(..), hGetContents, openFile)
 import Text.Printf
 
-directive :: ParsecT String () IO (String, String)
-directive = do
-    string "<!--"                               -- the comment starts
-    key <- quotedOrNotUntil (string ": ")       -- "key": or key:
-    value <- quotedOrNotUntil (string "-->")    -- "value" or value
-    return (key, value)
-  where
-    quotedUntil s = do
-      openingQuote <- string "\"" <|> string "'"
-      middleStuff <- manyTill anyChar (string openingQuote)
-      s
-      return middleStuff
-    quotedOrNotUntil s = quotedUntil s <|> manyTill anyChar s
+parseEntryFromFile :: Handle          -- the handle for the file to read from
+                   -> IO (EntryResult SE.Entry)
+parseEntryFromFile fileHandle = SPI.parseEntry =<< hGetContents fileHandle
 
-entryParser :: ParsecT String () IO SE.Entry
-entryParser = do
-    directives <- DM.fromList <$> many directiveLine
-    content <- many anyChar
-    ctime <- liftIO $ defaultedCtime (DM.lookup "date" directives)
-    byline <- liftIO $ defaultedByline (DM.lookup "by" directives)
-    return $ SE.Entry ctime
-                      (defaultedUri directives)
-                      (directives DM.! "title")
-                      content
-                      byline
-                      (directives DM.! "lang")
+handleUris :: SE.Entry        -- whatever entry exists thus far
+           -> IO ()
+handleUris entry = do
+    results <- SPI.handleAbsentUris getHandler putHandler entry
+    forM_ results $ \result ->
+      case result of
+        Left someError -> print someError
+        _              -> return ()
   where
-    directiveLine = do
-      d <- directive
-      newline
-      return d
-    defaultedCtime :: Maybe String -> IO UTCTime
-    defaultedCtime mCtimeString = maybe getCurrentTime return $
-      mCtimeString >>= parseTimeM True defaultTimeLocale "%Y-%m-%d %H:%M:%S %Z"
-    defaultedUri   :: DM.Map String String -> String
-    defaultedUri directives = let
-        title :: String
-        title = directives DM.! "title"
-        mUri  :: Maybe String
-        mUri  = DM.lookup "uri" directives
-        makeUriFromTitle :: String -> String
-        makeUriFromTitle = intercalate "-" . words . map toLower
-      in fromMaybe (makeUriFromTitle title) mUri
-    defaultedByline :: Maybe String -> IO String
-    defaultedByline = maybe (getEnv "USER") return
+    getHandler = simpleHTTP . headRequest
+    putHandler :: String -> String -> IO (EntryResult ())
+    putHandler localCopy remoteUri =
+      case parseURI remoteUri of
+        Nothing -> return $ Left $ AssetError ("PUT request: not a valid URL: " ++ remoteUri)
+        Just u  -> let
+            contentType = BSI.unpackChars $ defaultMimeLookup (T.pack localCopy)
+          in do
+            fileBody <- readFile localCopy
+            httpPutResult <- simpleHTTP (setRequestBody (mkRequest PUT u) (contentType, fileBody))
+            case httpPutResult of
+              Left someConnError -> return (Left (AssetNetworkError someConnError))
+              Right _            -> return (Right ())
 
 main :: IO ()
 main = runSqlite "scarlet.sqlite" $ do
   runMigration $ migrate SE.entityDefs $ entityDef (Nothing :: Maybe SE.Entry)
   eitherEntry <- liftIO $ do
     fileContents <- readFile =<< (head <$> getArgs)
-    runParserT entryParser () "" fileContents
+    SPI.parseEntry fileContents
   case eitherEntry of
     Left errorString -> liftIO $ print errorString
     Right entry      -> do
