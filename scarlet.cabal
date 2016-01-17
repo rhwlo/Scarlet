@@ -11,7 +11,6 @@ cabal-version:        >=1.22
 
 executable scarlet
   main-is:            Scarlet.hs
-  ghc-options:        -optl-static -optl-pthread
   other-extensions:   EmptyDataDecls,
                       FlexibleContexts,
                       GADTs,
@@ -43,7 +42,6 @@ library
   exposed-modules:    Scarlet.Post.Internal,
                       Scarlet.Entry
   hs-source-dirs:     src
-  ghc-options:        -optl-static -optl-pthread
   other-extensions:   FlexibleContexts,
                       OverloadedStrings
   build-depends:      base >= 4.8.0.0,
@@ -79,7 +77,6 @@ test-suite scarlet-test
 
 executable scarlet-post
   main-is:            src/Scarlet/Post.hs
-  ghc-options:        -optl-static -optl-pthread
   other-extensions:   EmptyDataDecls,
                       FlexibleContexts,
                       GADTs,
